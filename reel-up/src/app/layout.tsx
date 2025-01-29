@@ -3,9 +3,11 @@ import {
   SignInButton,
   SignedIn,
   SignedOut,
-  UserButton
 } from '@clerk/nextjs'
 import './globals.css'
+import StyledComponentsRegistry from '../lib/registry'
+import Sidebar from '@/components/Sidebar'
+
 export default function RootLayout({
   children,
 }: {
@@ -14,14 +16,18 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en">
-        <body>
+        <body className="bg-white">
           <SignedOut>
             <SignInButton />
           </SignedOut>
           <SignedIn>
-            <UserButton />
+            <div className="flex min-h-screen">
+              <Sidebar />
+              <main className="flex-1">
+                <StyledComponentsRegistry>{children}</StyledComponentsRegistry>
+              </main>
+            </div>
           </SignedIn>
-          {children}
         </body>
       </html>
     </ClerkProvider>
