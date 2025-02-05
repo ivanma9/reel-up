@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import styled from 'styled-components';
 import { Video } from '../types/video';
 
@@ -18,19 +18,20 @@ const VideoContainer = styled.div`
   scroll-snap-align: start;
   position: relative;
   background-color: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 `;
 
+
 interface VideoFeedProps {
-  initialVideos: Video[];
+  videos: Video[];
 }
 
-export default function VideoFeed({ initialVideos }: VideoFeedProps) {
-  const [videos] = useState<Video[]>(initialVideos);
-
-  useEffect(() => {
-    console.log('VideoFeed received videos:', initialVideos);
-  }, [initialVideos]);
-
+export default function VideoFeed({ videos }: VideoFeedProps) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
   return (
     <FeedContainer>
       {videos.length === 0 ? (
@@ -38,13 +39,18 @@ export default function VideoFeed({ initialVideos }: VideoFeedProps) {
       ) : (
         videos.map((video) => (
           <VideoContainer key={video.id}>
-            <video
-              src={video.videoUrl}
-              controls
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            <video 
+              style={{ width: '100%', maxWidth: '500px', height: '100%', aspectRatio: '9/16' }}
+              src={video.videoUrl} 
+              autoPlay
+              muted={true}
+              playsInline
+              loop
+              onPlay={() => {setIsPlaying(true)}}
+              onPause={() => {setIsPlaying(false)}}
+              onClick={() => {setIsPlaying(!isPlaying)}}
             />
-            <h2>{video.username}</h2>
-            <p>{video.caption}</p>
+            
           </VideoContainer>
         ))
       )}

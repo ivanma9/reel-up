@@ -1,55 +1,95 @@
+'use server'
+
 import { auth } from "@clerk/nextjs/server";
-import { Video } from "../../types/video";
 import { Logger } from "@/utils/logger";
-import path from "path";
-import { tmpdir } from "os";
-import { writeFile } from "fs/promises";
-import { uploadToS3 } from './s3';
+import { uploadVideoToS3 } from "@/lib/s3";
+import getVideoTranscription from "@/lib/video-transcription";
+import getVideoAnalysis from "@/lib/video-analysis";
+import generateTags from "@/lib/video-tags";
+import getVideoEmbedding from "@/lib/video-embedding";
+import { insertVideo } from "@/db/queries/insert";
 
-const logger = new Logger("video actions");
+const logger = new Logger("video-actions");
 
-export async function createVideo(videoFormData: FormData) {
+interface CreateVideoParams {
+    file: FormData;
+    filename: string;
+    title: string;
+    description: string;
+    contentType: string;
+}
+
+export async function createVideo({ file, filename, title, description, contentType }: CreateVideoParams) {
     const session = await auth();
     const userId = session?.userId;
     if (!userId) {
+        logger.error('User not authenticated');
         throw new Error('User not authenticated');
     }
-    const file = videoFormData.get('file') as File;
-    const caption = videoFormData.get('caption') as string;
-    const username = videoFormData.get('username') as string;
-
-    if (!file || !caption || !username) {
-        throw new Error('Invalid form data');
-    }
-    // Verify file is a video type
-    const validVideoTypes = ['video/mp4', 'video/webm', 'video/ogg'];
-    if (!validVideoTypes.includes(file.type)) {
-        throw new Error(`Invalid file type. Must be one of: ${validVideoTypes.join(', ')}`);
-    }
-
-    const metadataFilename = `${userId}-User-${caption}-${file.name}`;
 
     try {
-        logger.info(`Uploading video ${file.name} with metadata ${metadataFilename}`);
+        if (!file || !filename || !title) {
+            logger.error('Missing required fields');
+            throw new Error('Missing required fields');
+        }
 
-        // Save file to temp direction to get duration
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const tempDir = path.join(tmpdir(), 'reel-up');
-        const tempFilePath = path.join(tempDir, file.name);
-        await writeFile(tempFilePath, buffer);
+        // Convert FormData to Buffer
+        const formDataFile = file.get('file') as File;
+        const buffer = Buffer.from(await formDataFile.arrayBuffer());
 
-        // Get duration of video
-        const duration = await getVideoDuration(tempFilePath);
+        // Generate a unique filename
+        const uniqueFilename = `${userId}-${Date.now()}-${filename}`;
+        logger.info(`Generated unique filename: ${uniqueFilename}`);
 
-        // Upload video to S3
-        const videoUrl = await uploadToS3({
+        // Upload video to S3 with the new signature
+        const { fileUrl, metadata } = await uploadVideoToS3(
             buffer,
-            filename: metadataFilename,
-            contentType: file.type,
+            uniqueFilename,
+            contentType,
+            userId,
+            title
+        );
+
+        logger.info(`File URL: ${fileUrl}`);
+        logger.info(`Metadata: ${metadata}`);
+
+        // Use Metadata and contents of video and audio transcript to generate proper metadata
+        const [audioTranscript, videoAnalysis] = await Promise.all([
+            getVideoTranscription(fileUrl),
+            getVideoAnalysis(fileUrl)
+        ]);
+
+        // Generate tags based off the audio and video
+        const tags = await generateTags(audioTranscript, videoAnalysis);
+
+        // Generate embedding
+        const embeddingValues = await getVideoEmbedding(videoAnalysis)
+
+
+        logger.info(`userId: ${userId}`)
+        //Add embedding and metadata to neon
+        await insertVideo({
+            id: uniqueFilename,
+            title: title,
+            caption: description,
+            summary: videoAnalysis,
+            userId: userId,
+            embedding: embeddingValues,
+            categories: tags,
         });
 
+
+        // Return metadata and file URL
+        return {
+            success: true,
+            fileUrl,
+            metadata: {
+                ...metadata,
+                description // Adding the description from the input params
+            }
+        };
     } catch (error) {
-        logger.error(`Error uploading video ${file.name}: ${error}`);
-        throw new Error(`Error uploading video ${file.name}: ${error}`);
+        logger.error(`Error creating video: ${error}`);
+        throw error;
     }
 }

@@ -7,6 +7,7 @@ import {
 import './globals.css'
 import StyledComponentsRegistry from '../lib/registry'
 import Sidebar from '@/components/Sidebar'
+import { Toaster } from "@/components/ui/toaster"
 
 export default function RootLayout({
   children,
@@ -28,6 +29,7 @@ export default function RootLayout({
               </main>
             </div>
           </SignedIn>
+          <Toaster />
         </body>
       </html>
     </ClerkProvider>
